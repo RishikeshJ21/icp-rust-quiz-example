@@ -11,17 +11,17 @@ type Memory = VirtualMemory<DefaultMemoryImpl>;
 type IdCell = Cell<u64, Memory>;
 
 #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
-struct Voting {
+struct Quiz {
     id: u64,
     question: String,
     options: Vec<String>,
-    votes: HashMap<String, u32>,
+    answers: HashMap<String, u32>,
     created_at: u64,
     updated_at: Option<u64>,
 }
 
 // a trait that must be implemented for a struct that is stored in a stable struct
-impl Storable for Voting {
+impl Storable for Quiz {
     fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
@@ -32,7 +32,7 @@ impl Storable for Voting {
 }
 
 // another trait that must be implemented for a struct that is stored in a stable struct
-impl BoundedStorable for Voting {
+impl BoundedStorable for Quiz {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
@@ -47,36 +47,36 @@ thread_local! {
                 .expect("Cannot create a counter")
         );
 
-        static STORAGE: RefCell<StableBTreeMap<u64, Voting, Memory>> =
+        static STORAGE: RefCell<StableBTreeMap<u64, Quiz, Memory>> =
             RefCell::new(StableBTreeMap::init(
                 MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1)))
         ));
     }
 
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
-struct VotingPayload {
+struct QuizPayload {
     question: String,
     options: Vec<String>,
 }
 
 
 #[ic_cdk::query]
-fn get_vote(id: u64) -> Result<Voting, Error> {
-    match _get_vote(&id) {
+fn get_quiz(id: u64) -> Result<Quiz, Error> {
+    match _get_quiz(&id) {
         Some(message) => Ok(message),
         None => Err(Error::NotFound {
-            msg: format!("a vote with id={} not found", id),
+            msg: format!("a quiz with id={} not found", id),
         }),
     }
 }
 
-fn _get_vote(id: &u64) -> Option<Voting> {
+fn _get_quiz(id: &u64) -> Option<Quiz> {
     STORAGE.with(|s| s.borrow().get(id))
 }
 
 
 #[ic_cdk::update]
-fn create_vote(payload: VotingPayload) -> Option<Voting> {
+fn create_quiz(payload: QuizPayload) -> Option<Quiz> {
     let id = ID_COUNTER
         .with(|counter| {
             let current_value = *counter.borrow().get();
@@ -84,58 +84,58 @@ fn create_vote(payload: VotingPayload) -> Option<Voting> {
         })
         .expect("cannot increment id counter");
 
-    let mut votes = HashMap::new();
+    let mut answers = HashMap::new();
 
     for option in &payload.options {
-        votes.insert(String::from(option), 0);
+        answers.insert(String::from(option), 0);
     }
 
 
-    let vote = Voting {
+    let quiz = Quiz {
         id,
         question: payload.question,
         options: payload.options,
-        votes,
+        answers,
         created_at: time(),
         updated_at: None,
     };
-    do_insert(&vote);
-    Some(vote)
+    do_insert(&quiz);
+    Some(quiz)
 }
 
 
 // helper method to perform insert.
-fn do_insert(vote: &Voting) {
-    STORAGE.with(|service| service.borrow_mut().insert(vote.id, vote.clone()));
+fn do_insert(quiz: &Quiz) {
+    STORAGE.with(|service| service.borrow_mut().insert(quiz.id, quiz.clone()));
 }
 
 
 #[ic_cdk::update]
-fn update_vote(id: u64, payload: VotingPayload) -> Result<Voting, Error> {
+fn update_quiz(id: u64, payload: QuizPayload) -> Result<Quiz, Error> {
 
-    let voting_option: Option<Voting> = STORAGE.with(|service| service.borrow().get(&id));
+    let quiz_option: Option<Quiz> = STORAGE.with(|service| service.borrow().get(&id));
 
-    match voting_option {
+    match quiz_option {
 
-        Some(mut vote) => {
+        Some(mut quiz) => {
 
 
-            let mut votes = HashMap::new();
+            let mut answers = HashMap::new();
 
             for option in &payload.options {
-                votes.insert(String::from(option), 0);
+                answers.insert(String::from(option), 0);
             }
 
-            vote.question = payload.question;
-            vote.options = payload.options;
-            vote.votes = votes;
-            vote.updated_at = Some(time());
-            do_insert(&vote);
-            Ok(vote)
+            quiz.question = payload.question;
+            quiz.options = payload.options;
+            quiz.answers = answers;
+            quiz.updated_at = Some(time());
+            do_insert(&quiz);
+            Ok(quiz)
         }
         None => Err(Error::NotFound {
             msg: format!(
-                "couldn't update a vote with id={}. vote not found",
+                "couldn't update a quiz with id={}. quiz not found",
                 id
             ),
         }),
@@ -144,12 +144,12 @@ fn update_vote(id: u64, payload: VotingPayload) -> Result<Voting, Error> {
 
 
 #[ic_cdk::update]
-fn delete_vote(id: u64) -> Result<Voting, Error> {
+fn delete_quiz(id: u64) -> Result<Quiz, Error> {
     match STORAGE.with(|service| service.borrow_mut().remove(&id)) {
-        Some(vote) => Ok(vote),
+        Some(quiz) => Ok(quiz),
         None => Err(Error::NotFound {
             msg: format!(
-                "couldn't delete a vote with id={}. vote not found.",
+                "couldn't delete a quiz with id={}. quiz not found.",
                 id
             ),
         }),
@@ -158,32 +158,32 @@ fn delete_vote(id: u64) -> Result<Voting, Error> {
 
 
 #[ic_cdk::update]
-fn cast_vote(id: u64, option: String) -> Result<Voting, Error> {
+fn answer_quiz(id: u64, option: String) -> Result<Quiz, Error> {
 
-    let voting_option: Option<Voting> = STORAGE.with(|service| service.borrow().get(&id));
+    let quiz_option: Option<Quiz> = STORAGE.with(|service| service.borrow().get(&id));
 
-    match voting_option {
+    match quiz_option {
 
-        Some(mut vote) => {
+        Some(mut quiz) => {
 
             // Check if the selected option is valid
-            if vote.options.contains(&option) {
-                if let Some(vote_count) = vote.votes.get_mut(&option) {
-                    *vote_count += 1;
+            if quiz.options.contains(&option) {
+                if let Some(answer_count) = quiz.answers.get_mut(&option) {
+                    *answer_count += 1;
                 }
-                vote.updated_at = Some(time());
-                do_insert(&vote);
-                Ok(vote)
+                quiz.updated_at = Some(time());
+                do_insert(&quiz);
+                Ok(quiz)
             } else {
                 // Return an error if the selected option is not valid
                 Err(Error::NotFound {
-                    msg: format!("The option '{}' is not found for this vote.", option),
+                    msg: format!("The option '{}' is not found for this quiz.", option),
                 })
             }
         }
         None => Err(Error::NotFound {
             msg: format!(
-                "couldn't cast a vote with id={}. vote not found",
+                "couldn't cast a quiz with id={}. quiz not found",
                 id
             ),
         }),
