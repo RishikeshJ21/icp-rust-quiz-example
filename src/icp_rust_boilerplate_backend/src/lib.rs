@@ -61,6 +61,25 @@ struct QuizPayload {
 
 
 #[ic_cdk::query]
+fn get_all_quiz() -> Result<Vec<Quiz>, Error> {
+    let quizzesMap : Vec<(u64, Quiz)> =  STORAGE.with(|service| service.borrow().iter().collect());
+    let length = quizzesMap.len();
+    let mut quizzes: Vec<Quiz> = Vec::new();
+    for key in 0..length {
+        quizzes.push(quizzesMap.get(key).unwrap().clone().1);
+    }
+
+    if quizzes.len() > 0 {
+        Ok(quizzes)
+    }else {
+        Err(Error::NotFound {
+            msg: format!("There are currently no quiz"),
+        })
+    }
+}
+
+
+#[ic_cdk::query]
 fn get_quiz(id: u64) -> Result<Quiz, Error> {
     match _get_quiz(&id) {
         Some(message) => Ok(message),
