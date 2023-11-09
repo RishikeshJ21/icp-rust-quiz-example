@@ -1,3 +1,18 @@
+type Error = variant { NotFound : record { msg : text } };
+type Result = variant { Ok : Voting; Err : Error };
+type Voting = record {
+  id : nat64;
+  updated_at : opt nat64;
+  question : text;
+  votes : vec record { text; nat32 };
+  created_at : nat64;
+  options : vec text;
+};
+type VotingPayload = record { question : text; options : vec text };
 service : {
-    "greet": (text) -> (text) query;
+  cast_vote : (nat64, text) -> (Result);
+  create_vote : (VotingPayload) -> (opt Voting);
+  delete_vote : (nat64) -> (Result);
+  get_vote : (nat64) -> (Result) query;
+  update_vote : (nat64, VotingPayload) -> (Result);
 }
