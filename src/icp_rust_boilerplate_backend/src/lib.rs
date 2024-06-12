@@ -96,6 +96,11 @@ fn _get_quiz(id: &u64) -> Option<Quiz> {
     STORAGE.with(|s| s.borrow().get(id))
 }
 
+#[ic_cdk::query]
+fn get_quiz_count() -> usize {
+    STORAGE.with(|service| service.borrow().len())
+}
+
 #[ic_cdk::update]
 fn create_quiz(payload: QuizPayload) -> Option<Quiz> {
     let id = ID_COUNTER.with(|counter| {
